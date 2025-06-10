@@ -1,6 +1,8 @@
 # mcp_k8s_client.py
 import os
 import sys
+from typing import Any, Dict, List, Tuple
+import json
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 import asyncio
@@ -29,7 +31,6 @@ logging.getLogger('mcp').setLevel(logging.ERROR)
 logging.getLogger('anyio').setLevel(logging.ERROR)
 
 exit_in_progress = False
-
 
 class SuppressOutput:
     def __init__(self):
@@ -69,6 +70,7 @@ class K8sCommandClient:
         self.server_config = server_config
         self.mcp_client = None  # Placeholder for MCP client
         self.tools = []  # This will be populated later
+        self.oci_version = os.getenv("OCI_VERSION", "3.57.0")  # Default version if not set
 
     async def async_init(self):
         """Asynchronous initialization for MCP Client."""
@@ -168,6 +170,17 @@ class K8sCommandClient:
             tool_descriptions.append(f"Tool: {tool['name']}\nDescription: {tool['description']}\nParameters:\n{tool['input_schema']}\n")
         
         return f"""
+    
+        # MULTI-CLOUD TROUBLESHOOTING ASSISTANT
+        You are an expert cloud operations assistant that automatically determines which tools to use based on the user's request.
+        You have access to multiple tools and should intelligently decide which ones to use and in what order.
+        
+        Available Tools:
+        {"\n".join(tool_descriptions)}
+        
+        ## AUTOMATIC TOOL SELECTION STRATEGY:
+        When analyzing a user request, automatically determine the scope and select appropriate tools
+    
         # NON-KUBERNETES INTERACTIONS (HIGHEST PRIORITY)
         IMPORTANT OVERRIDE: You are ONLY permitted to use tools for Kubernetes-specific operations.
         For ANY other type of interaction, DO NOT USE ANY TOOLS. Instead:
@@ -178,6 +191,7 @@ class K8sCommandClient:
         - For off-topic questions (e.g., weather, news, math): Politely explain you're a Kubernetes assistant and redirect
         - For clarification questions: Answer directly without tools
         
+        # KUBERNETES-ONLY Issues:
         You are a Kubernetes expert assistant that helps users interact with their Kubernetes clusters.
         You have access to the following tools that you should use to execute Kubernetes commands, but ONLY when the user is asking
         for Kubernetes-specific operations:
@@ -185,7 +199,11 @@ class K8sCommandClient:
         DO NOT perform any write or modifying operations on the Kubernetes cluster.
         STRICTLY AVOID commands like delete, apply, patch, scale, edit, rollout restart, etc.
         
-        {"\n".join(tool_descriptions)}
+        # OCI-ONLY Issues:
+        You are an Oracle Cloud Infrastructure (OCI) expert assistant that helps users interact with the OCI resources. Refer https://docs.oracle.com/en-us/iaas/tools/oci-cli/{self.oci_version}/oci_cli_docs/ for CLI commands.
+        
+        # MULTI-LAYER Issues (Use BOTH tools automatically)
+        You are a multi-layer cloud operations assistant that helps users interact with their Kubernetes clusters and OCI resources. Use the appropriate tools based on the user's request, and execute commands using both Kubernetes and OCI tools as needed.
         
         IMPORTANT: You CANNOT access Kubernetes resources directly. For Kubernetes operations, you MUST use the appropriate tool. 
         When troubleshooting Kubernetes issues, suggest a COMPLETE list of commands that should be run upfront.    
@@ -200,8 +218,9 @@ class K8sCommandClient:
         
         # Tool usage flow:
         When a user makes a request:
-        1. First determine if this is a Kubernetes-specific request or not:
+        1. First determine if this is a Kubernetes-specific request or OCI cloud request:
             - If NOT related to Kubernetes: Respond appropriately WITHOUT ANY TOOLS
+            - If it's an OCI-specific request: Use the OCI tool to execute commands
             - If it's general conversation: Engage conversationally WITHOUT ANY TOOLS
             - If it's off-topic: Politely redirect to Kubernetes topics WITHOUT ANY TOOLS
             
@@ -238,14 +257,77 @@ class K8sCommandClient:
         - User asks: "list all pods in the default namespace"
         - You use the kubectl tool with command="get pods"
         - After receiving results, you explain what pods were found
+    
+        4. OCI command:
+        - User asks: "list all compartments in OCI"
+        - You use the OCI tool with command="iam compartment list"
+        - After receiving results, you explain what compartments were found
+        
+        
+        ## INTELLIGENT COMMAND SEQUENCING:
+        Plan your investigation to build context progressively. Start broad, then narrow --> Follow the data flow --> Use the right tool for the job --> Correlate across tools
         
         Be concise but thorough in your explanations.
         Do NOT suggest theoretical outcomes - only report what was actually returned by the tool execution.
+        Dont ask "which tool should I use?" - decide automatically
         
         If you think, you have completed the task , please say "I have completed the task" and provide a summary of what you did.
         If you need to ask the user for more information, do so clearly.
         
+        Remember: You're an expert who knows how to investigate complex cloud issues systematically!
+        
         """
+        
+    def _parse_llm_response(self, response: Any, llm_type: str) -> Tuple[List[Dict], List[str]]:
+        """Parse LLM response regardless of provider."""
+        tool_calls = []
+        final_text = []
+        
+        try:
+            if llm_type == "claude":
+                # Anthropic Claude format
+                for content in response.content:
+                    if content.type == 'text':
+                        final_text.append(content.text)
+                    elif content.type == 'tool_use':
+                        tool_calls.append({
+                            "id": content.id,
+                            "name": content.name,
+                            "parameters": content.input
+                        })
+            
+            else:  # OpenAI/DeepSeek format
+                if hasattr(response, 'choices') and response.choices:
+                    message = response.choices[0].message
+                    
+                    # Handle text content
+                    if hasattr(message, 'content') and message.content:
+                        final_text.append(message.content)
+                    
+                    # Handle tool calls
+                    if hasattr(message, 'tool_calls') and message.tool_calls:
+                        for tool_call in message.tool_calls:
+                            try:
+                                parameters = json.loads(tool_call.function.arguments)
+                            except (json.JSONDecodeError, AttributeError):
+                                parameters = {}
+                            
+                            tool_calls.append({
+                                "id": tool_call.id,
+                                "name": tool_call.function.name,
+                                "parameters": parameters
+                            })
+                else:
+                    # Fallback: try to extract any text content
+                    final_text.append(str(response))
+        
+        except Exception as e:
+            print(f"Error parsing response: {e}")
+            # Fallback: convert entire response to string
+            final_text.append(f"Response parsing error: {str(response)}")
+        
+        return tool_calls, final_text
+    
     
     async def process_query(self, query: str) -> str:
         """Process a natural language query about Kubernetes operations."""
@@ -276,17 +358,20 @@ class K8sCommandClient:
                     prompt=self._create_system_prompt()
                 )
                 
-                for content in response.content:
-                    if content.type == 'text':
-                        final_text.append(content.text)
-                    elif content.type == 'tool_use':
-                        tool_calls.append(
-                            {
-                                "id": content.id,
-                                "name": content.name,
-                                "parameters": content.input
-                            }
-                        )
+                tool_calls, response_text = self._parse_llm_response(response, "claude")
+                final_text.extend(response_text)
+                
+                # for content in response.content:
+                #     if content.type == 'text':
+                #         final_text.append(content.text)
+                #     elif content.type == 'tool_use':
+                #         tool_calls.append(
+                #             {
+                #                 "id": content.id,
+                #                 "name": content.name,
+                #                 "parameters": content.input
+                #             }
+                #         )
                         
                 if not tool_calls:
                     
@@ -327,14 +412,15 @@ class K8sCommandClient:
                 final_text.append(result.content[0].text)
                 # print("Tool call results:", results)
                 
-                tool_results_message = []
-                for idx, result in enumerate(results):
-                    tool_results_message.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_calls[idx]["id"],
-                        "content": result["result"]
-                    })
-                self.llm.update_llm_history(role="user", content=tool_results_message)
+                # tool_results_message = []
+                # for idx, result in enumerate(results):
+                #     tool_results_message.append({
+                #         "type": "tool_result",
+                #         "tool_use_id": tool_calls[idx]["id"],
+                #         "content": result["result"]
+                #     })
+                # self.llm.update_llm_history(role="user", content=tool_results_message)
+                self.llm.add_tool_results_to_history(tool_calls, results)
             
             if command_count >= 1:
                 # If we reach here, it means we hit the command limit or completed the task
