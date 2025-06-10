@@ -15,5 +15,22 @@ tools = {
                 "default": "default"
             },
         }
+    },
+    "OCITool": {
+        "name": "oci_cli",
+        "description": "Execute OCI commands against the Oracle Cloud Infrastructure.",
+        "args": {
+            "command": {
+                "type": str,
+                "description": "The OCI command to execute.",
+                "required": True
+            },
+            "compartment_id": {
+                "type": str,
+                "description": "The compartment ID to use for the OCI command.",
+                "required": False,
+                "default": None
+            }
+        }
     }
 }
