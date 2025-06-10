@@ -1,6 +1,7 @@
+import os
+from typing import Dict, List
 import anthropic
 from k8s_assistant.llms.LLM import LLM
-import os
 
 class Claude(LLM):
     """Claude class for interacting with the Anthropic Claude model."""
@@ -42,6 +43,17 @@ class Claude(LLM):
         
         return response
 
+    def format_tool_results(self, tool_calls: List[Dict], results: List[Dict]) -> List[Dict]:
+        """Format tool results for Anthropic Claude."""
+        tool_results_message = []
+        for idx, result in enumerate(results):
+            tool_results_message.append({
+                "type": "tool_result",
+                "tool_use_id": tool_calls[idx]["id"],
+                "content": result["result"]
+            })
+        return tool_results_message
+    
     def update_llm_history(self, role: str, content: str|list) -> None:
         """Update the user history with the latest user input."""
         

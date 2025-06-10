@@ -1,6 +1,8 @@
+import os
+from typing import Dict, List
+from flask import json
 from openai import OpenAI
 from k8s_assistant.llms.LLM import LLM
-import os
 
 class GPT(LLM):
     """GPT class for interacting with the OpenAI GPT model."""
@@ -50,6 +52,43 @@ class GPT(LLM):
         
         return response
     
+    def format_tool_results(self, tool_calls: List[Dict], results: List[Dict]) -> List[Dict]:
+        """Format tool results for DeepSeek (same as OpenAI format)."""
+        # DeepSeek follows OpenAI format
+        tool_messages = []
+        for idx, result in enumerate(results):
+            tool_messages.append({
+                "role": "tool", 
+                "tool_call_id": tool_calls[idx]["id"],
+                "content": str(result["result"])
+            })
+        return tool_messages
+    
+    def add_tool_results_to_history(self, tool_calls: List[Dict], results: List[Dict]) -> None:
+        """Override for DeepSeek's tool result handling."""
+        # First add assistant message with tool calls (like OpenAI)
+        assistant_message = {
+            "role": "assistant", 
+            "content": None,
+            "tool_calls": []
+        }
+        
+        for call in tool_calls:
+            assistant_message["tool_calls"].append({
+                "id": call["id"],
+                "type": "function",
+                "function": {
+                    "name": call["name"],
+                    "arguments": json.dumps(call["parameters"])
+                }
+            })
+        
+        self.user_history.append(assistant_message)
+        
+        # Then add tool results
+        tool_messages = self.format_tool_results(tool_calls, results)
+        for tool_message in tool_messages:
+            self.user_history.append(tool_message)
     
     def update_llm_history(self, role: str, content: str|list) -> None:
         """Update the user history with the latest user input."""
