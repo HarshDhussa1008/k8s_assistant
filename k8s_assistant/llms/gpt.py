@@ -1,6 +1,6 @@
 import os
 from typing import Dict, List
-from flask import json
+import json
 from openai import OpenAI
 from k8s_assistant.llms.LLM import LLM
 
