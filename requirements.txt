@@ -2,3 +2,4 @@ anthropic>=0.13.0
 openai>=1.12.0
 mcp
 pyinstaller>=6.0.0
+tiktoken
