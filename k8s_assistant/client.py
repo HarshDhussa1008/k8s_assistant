@@ -9,6 +9,7 @@ import asyncio
 from contextlib import AsyncExitStack
 from k8s_assistant.llms import claude
 from k8s_assistant.llms import gpt
+from k8s_assistant.llms import deepseek
 import logging
 import shutil
 # logging.basicConfig(level=logging.WARNING, format='%(message)s')
@@ -78,7 +79,10 @@ class K8sCommandClient:
         logger.info("Initializing K8sCommandClient...")
         
         try:
-            self.llm = claude.Claude()
+            if os.getenv("ANTHROPIC_API_KEY"):
+                self.llm = claude.Claude()
+            else:
+                self.llm = deepseek.Deepseek()
             self.summary_llm = gpt.GPT()
             logger.info("LLM clients initialized.")
         except Exception as e:
