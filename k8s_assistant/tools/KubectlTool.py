@@ -1,3 +1,4 @@
+import os
 import subprocess
 from typing import Any, Dict
 from k8s_assistant.tools.Tool import Tool
@@ -36,12 +37,28 @@ class KubectlTool(Tool):
         print(f"Executing command: {cmd}")
         
         try:
+            
+            env = os.environ.copy()
+            env["PATH"] = "/home/opc/.local/bin:/home/opc/bin:/usr/share/Modules/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin"
+            cwd = "/home/opc"
+            env["HOME"] = "/home/opc"
+            env["USER"] = "opc"
+            
+            if "KUBECONFIG" not in env:
+                env["KUBECONFIG"] = "/home/opc/.kube/config"
+            
+            env["OCI_CLI_AUTH"] = "instance_principal"
+            env["OCI_VERSION"] = "3.57.0"
+            env["SHELL"] = "/bin/bash"
+            
             result = subprocess.run(
                 cmd.split(), 
                 capture_output=True, 
                 text=True,
                 check=False,
-                timeout=10  # Timeout after 10 seconds
+                timeout=10,  # Timeout after 10 seconds
+                env=env,
+                cwd=cwd  # Set working directory
             )
             
             return {
