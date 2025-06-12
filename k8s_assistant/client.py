@@ -81,8 +81,10 @@ class K8sCommandClient:
         try:
             if os.getenv("ANTHROPIC_API_KEY"):
                 self.llm = claude.Claude()
+                self.model = "claude-3-5-haiku-20241022"
             else:
                 self.llm = deepseek.Deepseek()
+                self.model = "deepseek-chat"
             self.summary_llm = gpt.GPT()
             logger.info("LLM clients initialized.")
         except Exception as e:
@@ -358,7 +360,7 @@ class K8sCommandClient:
                 response = self.llm.get_response(
                     tools=self.tools,
                     max_tokens=1024,
-                    model="claude-3-5-haiku-20241022",
+                    model=self.model,
                     prompt=self._create_system_prompt()
                 )
                 
