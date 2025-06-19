@@ -221,6 +221,9 @@ class K8sCommandClient:
             13. If you need to use multiple tools, explain the sequence of operations
             14. If you need to use a tool, provide the exact command and parameters you will run
             15. If you need to use a tool, explain what the expected output will be
+            16. If user gives a VMID in the query, use it as the namespace name for kubectl commands like ns-<vmid>
+            17. If user gives a compartment ID in the query, use it as the compartment-id for OCI commands
+            18. If user gives the user UUID in the query, use it as the deployment name for kubectl commands like dpy-<user-uuid>
         
         Example flow:
         
