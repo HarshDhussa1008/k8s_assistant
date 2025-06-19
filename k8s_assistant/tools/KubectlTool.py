@@ -29,8 +29,11 @@ class KubectlTool(Tool):
                 "code": 403,
                 "status": "forbidden"
             }
-        
-        cmd = f"kubectl {command}"
+
+        if 'kubectl' not in command:
+            cmd = f"kubectl {command}"
+        else:
+            cmd = command
         
         if namespace and '-n' not in command:
             cmd += f" -n {namespace}"
