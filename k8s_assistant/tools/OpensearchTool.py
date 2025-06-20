@@ -15,7 +15,8 @@ class OpensearchTool(Tool):
 
     def __init__(self):
         super().__init__("OpensearchTool")
-        self.opensearch_host = os.getenv("OPENSEARCH_HOST", "localhost:9200")
+        self.opensearch_host = os.getenv("OPENSEARCH_HOST", "localhost")
+        self.opensearch_port = int(os.getenv("OPENSEARCH_PORT", 9200))
         self.opensearch_user = os.getenv("OPENSEARCH_USER", "admin")
         self.opensearch_password = os.getenv("OPENSEARCH_PASSWORD", "admin")
         self.opensearch_scheme = os.getenv("OPENSEARCH_SCHEME", "https")
