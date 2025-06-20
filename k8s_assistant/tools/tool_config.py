@@ -32,5 +32,22 @@ tools = {
                 "default": None
             }
         }
+    },
+    "OpensearchTool": {
+        "name": "opensearch",
+        "description": "Execute OpenSearch commands against the OpenSearch cluster.",
+        "args": {
+            "index": {
+                "type": str,
+                "description": "The index to query in OpenSearch.",
+                "required": True
+            },
+            "query": {
+                "type": str,
+                "description": "The OpenSearch query to execute (JSON format).",
+                "required": False,
+                "default": None
+            }
+        }
     }
 }
