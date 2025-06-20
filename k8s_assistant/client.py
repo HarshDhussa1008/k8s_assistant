@@ -398,7 +398,7 @@ class K8sCommandClient:
                     prompt=self._create_system_prompt()
                 )
                 
-                tool_calls, response_text = self._parse_llm_response(response, "claude")
+                tool_calls, response_text = self._parse_llm_response(response, self.model.split("-")[0])
                 final_text.extend(response_text)
                 
                 # for content in response.content:
