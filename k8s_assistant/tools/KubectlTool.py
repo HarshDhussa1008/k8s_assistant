@@ -1,7 +1,17 @@
+import logging
 import os
 import subprocess
 from typing import Any, Dict
 from k8s_assistant.tools.Tool import Tool
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.propagate = False
+
+# Set up logging configuration
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler = logging.FileHandler(os.path.join(os.path.dirname(__file__), "kubectl.log"), mode='a+')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 class KubectlTool(Tool):
@@ -29,15 +39,19 @@ class KubectlTool(Tool):
                 "code": 403,
                 "status": "forbidden"
             }
-
-        if 'kubectl' not in command:
+        
+        if 'kubectl ' not in command:
             cmd = f"kubectl {command}"
         else:
             cmd = command
         
-        if namespace and '-n' not in command:
+        if namespace and ('-n' not in command and '--namespace' not in command):
             cmd += f" -n {namespace}"
-        print(f"Executing command: {cmd}")
+        
+        if 'logs' in command and 'grep' not in command:
+            cmd += " --tail=100"  # Default to last 100 lines of logs
+        
+        logger.info(f"Executing command: {cmd}")
         
         try:
             
@@ -55,8 +69,9 @@ class KubectlTool(Tool):
             env["SHELL"] = "/bin/bash"
             
             result = subprocess.run(
-                cmd.split(), 
-                capture_output=True, 
+                cmd,
+                capture_output=True,
+                shell=True, 
                 text=True,
                 check=False,
                 timeout=10,  # Timeout after 10 seconds
@@ -68,10 +83,16 @@ class KubectlTool(Tool):
                 "stdout": result.stdout,
                 "stderr": result.stderr,
                 "status": "success" if result.returncode == 0 else "error",
-                "code": result.returncode
+                "code": result.returncode,
+                "command": cmd,
+                "namespace": namespace
             }
         
         except subprocess.TimeoutExpired:
+            logger.error(f"Command timed out: {cmd}")
+            logger.debug(f"Command: {cmd}")
             return {"error": "Command timed out", "status": "timeout"}
         except Exception as e:
+            logger.error(f"Error executing command: {e}")
+            logger.debug(f"Command: {cmd}")
             return {"error": str(e), "status": "exception"}
